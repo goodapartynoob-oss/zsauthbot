@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const { getAvailableKey, getAvailableKeyCount } = require('./keyauth');
 const db = require('./db');
 require('dotenv').config();
@@ -7,22 +7,57 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
-client.once('clientReady', () => {
+// ─── Auto Register Commands on Startup ───────────────────────────────────────
+async function registerCommands() {
+  const commands = [
+    new SlashCommandBuilder()
+      .setName('getkey')
+      .setDescription('Get your unique license key'),
+
+    new SlashCommandBuilder()
+      .setName('panel')
+      .setDescription('Post the key distribution panel in this channel'),
+
+    new SlashCommandBuilder()
+      .setName('admin')
+      .setDescription('Admin commands')
+      .addSubcommand(sub =>
+        sub.setName('count').setDescription('Show number of available keys'))
+      .addSubcommand(sub =>
+        sub.setName('stats').setDescription('Show total keys claimed'))
+      .addSubcommand(sub =>
+        sub.setName('reset')
+          .setDescription('Reset a user claim')
+          .addUserOption(opt =>
+            opt.setName('user').setDescription('User to reset').setRequired(true)))
+  ].map(cmd => cmd.toJSON());
+
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+  try {
+    console.log('📋 Registering slash commands...');
+    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+    console.log('✅ Slash commands registered!');
+  } catch (err) {
+    console.error('❌ Failed to register commands:', err);
+  }
+}
+
+client.once('ready', async () => {
   console.log(`✅ Bot online as ${client.user.tag}`);
+  await registerCommands();
 });
 
 // ─── Helper: distribute a key to a Discord user ───────────────────────────────
 async function distributeKey(interaction) {
   const userId = interaction.user.id;
 
-  // Already claimed?
   if (db.hasClaimed(userId)) {
     return interaction.editReply({
       embeds: [errorEmbed('You already claimed a key! Check your DMs.')]
     });
   }
 
-  // Fetch a key from KeyAuth that still has uses remaining
   let key;
   try {
     key = await getAvailableKey();
@@ -39,7 +74,6 @@ async function distributeKey(interaction) {
     });
   }
 
-  // Save claim so same user can't grab a second key
   db.markClaimed(userId, key);
 
   const embed = new EmbedBuilder()
@@ -53,7 +87,6 @@ async function distributeKey(interaction) {
     await interaction.user.send({ embeds: [embed] });
     await interaction.editReply({ embeds: [successEmbed('✅ Your key has been sent to your DMs!')] });
   } catch {
-    // DMs closed — show in ephemeral reply instead
     await interaction.editReply({ embeds: [embed] });
   }
 }
@@ -67,7 +100,7 @@ client.on('interactionCreate', async (interaction) => {
     await distributeKey(interaction);
   }
 
-  // /panel command — posts button panel in channel
+  // /panel command
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
