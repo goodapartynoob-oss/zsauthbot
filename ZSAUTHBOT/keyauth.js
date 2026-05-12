@@ -1,61 +1,50 @@
-const axios = require('axios');
-require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 
-const APP_SECRET = process.env.KEYAUTH_APP_SECRET;
+// FREE VERSION — reads username:password pairs from data/users.txt
+// Format: one per line → username:password
+// Example:
+//   user1:pass1
+//   user2:pass2
 
-async function getAvailableKey() {
-  try {
-    const url = `https://keyauth.win/api/seller/?sellerkey=${APP_SECRET}&type=fetchallkeys`;
-    console.log('Calling KeyAuth URL:', url);
+const USERS_FILE = path.join(__dirname, 'data', 'users.txt');
+const USED_FILE  = path.join(__dirname, 'data', 'used_users.txt');
 
-    const res = await axios.get(url, { timeout: 15000 });
-    console.log('KeyAuth raw response:', JSON.stringify(res.data));
+if (!fs.existsSync(path.join(__dirname, 'data'))) {
+  fs.mkdirSync(path.join(__dirname, 'data'), { recursive: true });
+}
+if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '');
+if (!fs.existsSync(USED_FILE))  fs.writeFileSync(USED_FILE, '');
 
-    if (!res.data.success) {
-      console.error('KeyAuth failed:', res.data.message);
-      return null;
-    }
-
-    const keys = res.data.keys || [];
-    console.log('Total keys found:', keys.length);
-
-    for (const k of keys) {
-      console.log(`Key: ${k.key} | uses: ${k.uses} | maxuses: ${k.maxuses}`);
-      const uses    = parseInt(k.uses)    || 0;
-      const maxuses = parseInt(k.maxuses) || 0;
-      if (maxuses === 0 || uses < maxuses) {
-        console.log('Returning available key:', k.key);
-        return k.key;
-      }
-    }
-
-    console.log('No available keys found');
-    return null;
-
-  } catch (err) {
-    console.error('KeyAuth EXCEPTION:', err.message);
-    console.error('Full error:', err);
-    throw err;
-  }
+function getAllUsers() {
+  return fs.readFileSync(USERS_FILE, 'utf8')
+    .split('\n').map(l => l.trim()).filter(l => l.includes(':'));
 }
 
-async function getAvailableKeyCount() {
-  try {
-    const url = `https://keyauth.win/api/seller/?sellerkey=${APP_SECRET}&type=fetchallkeys`;
-    const res = await axios.get(url, { timeout: 15000 });
-
-    if (!res.data.success) return 0;
-
-    const keys = res.data.keys || [];
-    return keys.filter(k => {
-      const uses    = parseInt(k.uses)    || 0;
-      const maxuses = parseInt(k.maxuses) || 0;
-      return maxuses === 0 || uses < maxuses;
-    }).length;
-  } catch (err) {
-    console.error('KeyAuth count error:', err.message);
-    return 0;
-  }
+function getUsedUsers() {
+  return fs.readFileSync(USED_FILE, 'utf8')
+    .split('\n').map(l => l.trim()).filter(l => l.length > 0);
 }
 
-module.exports = { getAvailableKey, getAvailableKeyCount };
+// Returns { username, password } or null if none left
+async function fetchUnusedUser() {
+  const allUsers  = getAllUsers();
+  const usedUsers = getUsedUsers();
+  const available = allUsers.filter(u => !usedUsers.includes(u));
+  if (available.length === 0) return null;
+
+  const entry = available[0];
+  fs.appendFileSync(USED_FILE, entry + '\n');
+
+  const [username, ...rest] = entry.split(':');
+  const password = rest.join(':'); // handle passwords that contain ':'
+  return { username, password };
+}
+
+async function getUnusedUserCount() {
+  const allUsers  = getAllUsers();
+  const usedUsers = getUsedUsers();
+  return allUsers.filter(u => !usedUsers.includes(u)).length;
+}
+
+module.exports = { fetchUnusedUser, getUnusedUserCount };
