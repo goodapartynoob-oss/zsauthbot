@@ -3,20 +3,20 @@ require('dotenv').config();
 
 const commands = [
   new SlashCommandBuilder()
-    .setName('getuser')
-    .setDescription('Get your login username and password'),
+    .setName('getkey')
+    .setDescription('Get your unique license key'),
 
   new SlashCommandBuilder()
     .setName('panel')
-    .setDescription('Post the login distribution panel in this channel'),
+    .setDescription('Post the key distribution panel in this channel'),
 
   new SlashCommandBuilder()
     .setName('admin')
     .setDescription('Admin commands')
     .addSubcommand(sub =>
-      sub.setName('count').setDescription('Show number of available accounts'))
+      sub.setName('count').setDescription('Show number of available keys'))
     .addSubcommand(sub =>
-      sub.setName('stats').setDescription('Show total accounts claimed'))
+      sub.setName('stats').setDescription('Show total keys claimed'))
     .addSubcommand(sub =>
       sub.setName('reset')
         .setDescription('Reset a user claim')
