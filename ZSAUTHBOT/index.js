@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const KeyAuth = require('./keyauth');
+const { getAvailableKey, getAvailableKeyCount } = require('./keyauth');
 const db = require('./db');
 require('dotenv').config();
 
@@ -11,54 +11,68 @@ client.once('clientReady', () => {
   console.log(`✅ Bot online as ${client.user.tag}`);
 });
 
-client.on('interactionCreate', async (interaction) => {
+// ─── Helper: distribute a key to a Discord user ───────────────────────────────
+async function distributeKey(interaction) {
+  const userId = interaction.user.id;
 
-  // /getuser command
-  if (interaction.isChatInputCommand() && interaction.commandName === 'getuser') {
-    const userId = interaction.user.id;
-
-    if (db.hasClaimed(userId)) {
-      return interaction.reply({
-        embeds: [errorEmbed('You already claimed your login! Check your DMs.')],
-        ephemeral: true
-      });
-    }
-
-    await interaction.deferReply({ ephemeral: true });
-
-    const user = await KeyAuth.fetchUnusedUser();
-    if (!user) {
-      return interaction.editReply({
-        embeds: [errorEmbed('No accounts available right now. Contact an admin.')]
-      });
-    }
-
-    db.markClaimed(userId, `${user.username}:${user.password}`);
-
-    const embed = new EmbedBuilder()
-      .setTitle('✅ Your Login Credentials')
-      .setColor(0x5865F2)
-      .addFields(
-        { name: '👤 Username', value: `\`${user.username}\`` },
-        { name: '🔒 Password', value: `\`${user.password}\`` }
-      )
-      .setFooter({ text: 'Do not share these with anyone.' })
-      .setTimestamp();
-
-    try {
-      await interaction.user.send({ embeds: [embed] });
-      await interaction.editReply({ embeds: [successEmbed('✅ Your login has been sent to your DMs!')] });
-    } catch {
-      await interaction.editReply({ embeds: [embed] });
-    }
+  // Already claimed?
+  if (db.hasClaimed(userId)) {
+    return interaction.editReply({
+      embeds: [errorEmbed('You already claimed a key! Check your DMs.')]
+    });
   }
 
-  // /panel command — posts button panel
+  // Fetch a key from KeyAuth that still has uses remaining
+  let key;
+  try {
+    key = await getAvailableKey();
+  } catch (err) {
+    console.error('KeyAuth error:', err.message);
+    return interaction.editReply({
+      embeds: [errorEmbed('Could not connect to KeyAuth. Try again later.')]
+    });
+  }
+
+  if (!key) {
+    return interaction.editReply({
+      embeds: [errorEmbed('No keys available right now. Contact an admin.')]
+    });
+  }
+
+  // Save claim so same user can't grab a second key
+  db.markClaimed(userId, key);
+
+  const embed = new EmbedBuilder()
+    .setTitle('✅ Your License Key')
+    .setColor(0x5865F2)
+    .addFields({ name: '🔑 Key', value: `\`${key}\`` })
+    .setFooter({ text: 'Do not share this key with anyone.' })
+    .setTimestamp();
+
+  try {
+    await interaction.user.send({ embeds: [embed] });
+    await interaction.editReply({ embeds: [successEmbed('✅ Your key has been sent to your DMs!')] });
+  } catch {
+    // DMs closed — show in ephemeral reply instead
+    await interaction.editReply({ embeds: [embed] });
+  }
+}
+
+// ─── Interactions ─────────────────────────────────────────────────────────────
+client.on('interactionCreate', async (interaction) => {
+
+  // /getkey command
+  if (interaction.isChatInputCommand() && interaction.commandName === 'getkey') {
+    await interaction.deferReply({ ephemeral: true });
+    await distributeKey(interaction);
+  }
+
+  // /panel command — posts button panel in channel
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('btn_getuser')
-        .setLabel('🔑 Get My Login')
+        .setCustomId('btn_getkey')
+        .setLabel('🔑 Get My Key')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('btn_info')
@@ -67,50 +81,18 @@ client.on('interactionCreate', async (interaction) => {
     );
 
     const embed = new EmbedBuilder()
-      .setTitle('🚀 Account Distribution')
-      .setDescription('Click the button below to receive your login credentials.')
+      .setTitle('🚀 Key Distribution')
+      .setDescription('Click the button below to receive your unique license key.')
       .setColor(0x5865F2)
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed], components: [row] });
   }
 
-  // Button: Get Login
-  if (interaction.isButton() && interaction.customId === 'btn_getuser') {
-    const userId = interaction.user.id;
+  // Button: Get Key
+  if (interaction.isButton() && interaction.customId === 'btn_getkey') {
     await interaction.deferReply({ ephemeral: true });
-
-    if (db.hasClaimed(userId)) {
-      return interaction.editReply({
-        embeds: [errorEmbed('You already claimed your login. Check your DMs.')]
-      });
-    }
-
-    const user = await KeyAuth.fetchUnusedUser();
-    if (!user) {
-      return interaction.editReply({
-        embeds: [errorEmbed('No accounts available. Contact an admin.')]
-      });
-    }
-
-    db.markClaimed(userId, `${user.username}:${user.password}`);
-
-    const embed = new EmbedBuilder()
-      .setTitle('✅ Your Login Credentials')
-      .setColor(0x57F287)
-      .addFields(
-        { name: '👤 Username', value: `\`${user.username}\`` },
-        { name: '🔒 Password', value: `\`${user.password}\`` }
-      )
-      .setFooter({ text: 'Keep these private. Do not share.' })
-      .setTimestamp();
-
-    try {
-      await interaction.user.send({ embeds: [embed] });
-      await interaction.editReply({ embeds: [successEmbed('✅ Sent to your DMs!')] });
-    } catch {
-      await interaction.editReply({ embeds: [embed] });
-    }
+    await distributeKey(interaction);
   }
 
   // Button: Info
@@ -119,10 +101,10 @@ client.on('interactionCreate', async (interaction) => {
       embeds: [new EmbedBuilder()
         .setTitle('ℹ️ How It Works')
         .setDescription(
-          '1. Click **Get My Login**\n' +
-          '2. You will receive a username and password in DMs\n' +
-          '3. Use them to log into the app\n' +
-          '4. Each Discord account can only claim once'
+          '1. Click **Get My Key**\n' +
+          '2. You will receive a unique license key in your DMs\n' +
+          '3. Use the key to activate your app\n' +
+          '4. Each Discord account can only claim **one key**'
         )
         .setColor(0xFEE75C)],
       ephemeral: true
@@ -138,8 +120,13 @@ client.on('interactionCreate', async (interaction) => {
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'count') {
-      const count = await KeyAuth.getUnusedUserCount();
-      interaction.reply({ content: `👤 Available accounts: **${count}**`, ephemeral: true });
+      let count;
+      try {
+        count = await getAvailableKeyCount();
+      } catch {
+        count = 'Error fetching from KeyAuth';
+      }
+      interaction.reply({ content: `🔑 Keys with remaining uses: **${count}**`, ephemeral: true });
     }
 
     if (sub === 'reset') {
@@ -150,7 +137,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (sub === 'stats') {
       const total = db.getTotalClaims();
-      interaction.reply({ content: `📊 Total accounts claimed: **${total}**`, ephemeral: true });
+      interaction.reply({ content: `📊 Total keys claimed: **${total}**`, ephemeral: true });
     }
   }
 });
