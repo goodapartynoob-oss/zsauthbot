@@ -1,68 +1,61 @@
 const axios = require('axios');
 require('dotenv').config();
 
-const OWNER_ID   = process.env.KEYAUTH_OWNER_ID;    // eq1AWn1yMY
-const APP_SECRET = process.env.KEYAUTH_APP_SECRET;  // your secret key
-const APP_NAME   = process.env.KEYAUTH_APP_NAME;    // ZSCHEAT
+const APP_SECRET = process.env.KEYAUTH_APP_SECRET;
 
-/**
- * Fetch all license keys from KeyAuth Seller API
- */
-async function fetchAllKeys() {
-  const url = `https://keyauth.win/api/seller/?sellerkey=${APP_SECRET}&type=fetchallkeys`;
-
-  console.log('🔍 Fetching keys from KeyAuth...');
-
-  const res = await axios.get(url, {
-    timeout: 10000,
-    headers: {
-      'User-Agent': 'Mozilla/5.0'
-    }
-  });
-
-  console.log('KeyAuth response:', JSON.stringify(res.data));
-
-  if (!res.data.success) {
-    throw new Error(`KeyAuth error: ${res.data.message}`);
-  }
-
-  return res.data.keys || [];
-}
-
-/**
- * Returns a key that still has remaining uses.
- */
 async function getAvailableKey() {
-  const keys = await fetchAllKeys();
+  try {
+    const url = `https://keyauth.win/api/seller/?sellerkey=${APP_SECRET}&type=fetchallkeys`;
+    console.log('Calling KeyAuth URL:', url);
 
-  if (!keys || keys.length === 0) return null;
+    const res = await axios.get(url, { timeout: 15000 });
+    console.log('KeyAuth raw response:', JSON.stringify(res.data));
 
-  for (const k of keys) {
-    const uses    = parseInt(k.uses)    || 0;
-    const maxuses = parseInt(k.maxuses) || 0;
-
-    // maxuses 0 = unlimited, otherwise check remaining uses
-    if (maxuses === 0 || uses < maxuses) {
-      return k.key;
+    if (!res.data.success) {
+      console.error('KeyAuth failed:', res.data.message);
+      return null;
     }
-  }
 
-  return null;
+    const keys = res.data.keys || [];
+    console.log('Total keys found:', keys.length);
+
+    for (const k of keys) {
+      console.log(`Key: ${k.key} | uses: ${k.uses} | maxuses: ${k.maxuses}`);
+      const uses    = parseInt(k.uses)    || 0;
+      const maxuses = parseInt(k.maxuses) || 0;
+      if (maxuses === 0 || uses < maxuses) {
+        console.log('Returning available key:', k.key);
+        return k.key;
+      }
+    }
+
+    console.log('No available keys found');
+    return null;
+
+  } catch (err) {
+    console.error('KeyAuth EXCEPTION:', err.message);
+    console.error('Full error:', err);
+    throw err;
+  }
 }
 
-/**
- * Returns count of keys with remaining uses.
- */
 async function getAvailableKeyCount() {
-  const keys = await fetchAllKeys();
+  try {
+    const url = `https://keyauth.win/api/seller/?sellerkey=${APP_SECRET}&type=fetchallkeys`;
+    const res = await axios.get(url, { timeout: 15000 });
 
-  if (!keys || keys.length === 0) return 0;
+    if (!res.data.success) return 0;
 
-  return keys.filter(k => {
-    const uses    = parseInt(k.uses)    || 0;
-    const maxuses = parseInt(k.maxuses) || 0;
-    return maxuses === 0 || uses < maxuses;
-  }).length;
+    const keys = res.data.keys || [];
+    return keys.filter(k => {
+      const uses    = parseInt(k.uses)    || 0;
+      const maxuses = parseInt(k.maxuses) || 0;
+      return maxuses === 0 || uses < maxuses;
+    }).length;
+  } catch (err) {
+    console.error('KeyAuth count error:', err.message);
+    return 0;
+  }
 }
 
 module.exports = { getAvailableKey, getAvailableKeyCount };
