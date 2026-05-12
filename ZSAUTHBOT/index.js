@@ -1,8 +1,7 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const KeyAuth = require('./keyauth');
 const db = require('./db');
 require('dotenv').config();
-
-const ALLOWED_CHANNEL_ID = process.env.ALLOWED_CHANNEL_ID; // Set this in Railway Variables
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
@@ -18,14 +17,6 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isChatInputCommand() && interaction.commandName === 'getuser') {
     const userId = interaction.user.id;
 
-    // Check channel
-    if (interaction.channelId !== ALLOWED_CHANNEL_ID) {
-      return interaction.reply({
-        embeds: [errorEmbed(`❌ You can only use this command in <#${ALLOWED_CHANNEL_ID}>!`)],
-        ephemeral: true
-      });
-    }
-
     if (db.hasClaimed(userId)) {
       return interaction.reply({
         embeds: [errorEmbed('You already claimed your login! Check your DMs.')],
@@ -35,23 +26,21 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.deferReply({ ephemeral: true });
 
-    const SHARED_USERNAME = process.env.SHARED_USERNAME;
-    const SHARED_PASSWORD = process.env.SHARED_PASSWORD;
-
-    if (!SHARED_USERNAME || !SHARED_PASSWORD) {
+    const user = await KeyAuth.fetchUnusedUser();
+    if (!user) {
       return interaction.editReply({
-        embeds: [errorEmbed('No credentials configured. Contact an admin.')]
+        embeds: [errorEmbed('No accounts available right now. Contact an admin.')]
       });
     }
 
-    db.markClaimed(userId, `${SHARED_USERNAME}:${SHARED_PASSWORD}`);
+    db.markClaimed(userId, `${user.username}:${user.password}`);
 
     const embed = new EmbedBuilder()
       .setTitle('✅ Your Login Credentials')
       .setColor(0x5865F2)
       .addFields(
-        { name: '👤 Username', value: `\`${SHARED_USERNAME}\`` },
-        { name: '🔒 Password', value: `\`${SHARED_PASSWORD}\`` }
+        { name: '👤 Username', value: `\`${user.username}\`` },
+        { name: '🔒 Password', value: `\`${user.password}\`` }
       )
       .setFooter({ text: 'Do not share these with anyone.' })
       .setTimestamp();
@@ -66,13 +55,6 @@ client.on('interactionCreate', async (interaction) => {
 
   // /panel command — posts button panel
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
-    if (!interaction.member.permissions.has('Administrator')) {
-      return interaction.reply({
-        content: '❌ Only admins can post the panel.',
-        ephemeral: true
-      });
-    }
-
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('btn_getuser')
@@ -98,36 +80,27 @@ client.on('interactionCreate', async (interaction) => {
     const userId = interaction.user.id;
     await interaction.deferReply({ ephemeral: true });
 
-    // Check channel
-    if (interaction.channelId !== ALLOWED_CHANNEL_ID) {
-      return interaction.editReply({
-        embeds: [errorEmbed(`❌ You can only claim your login in <#${ALLOWED_CHANNEL_ID}>!`)]
-      });
-    }
-
     if (db.hasClaimed(userId)) {
       return interaction.editReply({
         embeds: [errorEmbed('You already claimed your login. Check your DMs.')]
       });
     }
 
-    const SHARED_USERNAME = process.env.SHARED_USERNAME;
-    const SHARED_PASSWORD = process.env.SHARED_PASSWORD;
-
-    if (!SHARED_USERNAME || !SHARED_PASSWORD) {
+    const user = await KeyAuth.fetchUnusedUser();
+    if (!user) {
       return interaction.editReply({
-        embeds: [errorEmbed('No credentials configured. Contact an admin.')]
+        embeds: [errorEmbed('No accounts available. Contact an admin.')]
       });
     }
 
-    db.markClaimed(userId, `${SHARED_USERNAME}:${SHARED_PASSWORD}`);
+    db.markClaimed(userId, `${user.username}:${user.password}`);
 
     const embed = new EmbedBuilder()
       .setTitle('✅ Your Login Credentials')
       .setColor(0x57F287)
       .addFields(
-        { name: '👤 Username', value: `\`${SHARED_USERNAME}\`` },
-        { name: '🔒 Password', value: `\`${SHARED_PASSWORD}\`` }
+        { name: '👤 Username', value: `\`${user.username}\`` },
+        { name: '🔒 Password', value: `\`${user.password}\`` }
       )
       .setFooter({ text: 'Keep these private. Do not share.' })
       .setTimestamp();
@@ -165,10 +138,8 @@ client.on('interactionCreate', async (interaction) => {
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'count') {
-      const SHARED_USERNAME = process.env.SHARED_USERNAME;
-      const SHARED_PASSWORD = process.env.SHARED_PASSWORD;
-      const configured = SHARED_USERNAME && SHARED_PASSWORD ? '✅ Configured' : '❌ Not Set';
-      interaction.reply({ content: `🔑 Shared Credentials: **${configured}**\n👤 Username: **${SHARED_USERNAME || 'Not set'}**`, ephemeral: true });
+      const count = await KeyAuth.getUnusedUserCount();
+      interaction.reply({ content: `👤 Available accounts: **${count}**`, ephemeral: true });
     }
 
     if (sub === 'reset') {
