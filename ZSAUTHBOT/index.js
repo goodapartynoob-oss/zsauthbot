@@ -2,6 +2,8 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 const db = require('./db');
 require('dotenv').config();
 
+const ALLOWED_CHANNEL_ID = process.env.ALLOWED_CHANNEL_ID; // Set this in Railway Variables
+
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
@@ -15,6 +17,14 @@ client.on('interactionCreate', async (interaction) => {
   // /getuser command
   if (interaction.isChatInputCommand() && interaction.commandName === 'getuser') {
     const userId = interaction.user.id;
+
+    // Check channel
+    if (interaction.channelId !== ALLOWED_CHANNEL_ID) {
+      return interaction.reply({
+        embeds: [errorEmbed(`❌ You can only use this command in <#${ALLOWED_CHANNEL_ID}>!`)],
+        ephemeral: true
+      });
+    }
 
     if (db.hasClaimed(userId)) {
       return interaction.reply({
@@ -87,6 +97,13 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton() && interaction.customId === 'btn_getuser') {
     const userId = interaction.user.id;
     await interaction.deferReply({ ephemeral: true });
+
+    // Check channel
+    if (interaction.channelId !== ALLOWED_CHANNEL_ID) {
+      return interaction.editReply({
+        embeds: [errorEmbed(`❌ You can only claim your login in <#${ALLOWED_CHANNEL_ID}>!`)]
+      });
+    }
 
     if (db.hasClaimed(userId)) {
       return interaction.editReply({
