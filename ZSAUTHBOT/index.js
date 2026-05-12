@@ -1,5 +1,4 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const KeyAuth = require('./keyauth');
 const db = require('./db');
 require('dotenv').config();
 
@@ -7,7 +6,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
-client.once('ready', () => {
+client.once('clientReady', () => {
   console.log(`✅ Bot online as ${client.user.tag}`);
 });
 
@@ -26,21 +25,23 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.deferReply({ ephemeral: true });
 
-    const user = await KeyAuth.fetchUnusedUser();
-    if (!user) {
+    const SHARED_USERNAME = process.env.SHARED_USERNAME;
+    const SHARED_PASSWORD = process.env.SHARED_PASSWORD;
+
+    if (!SHARED_USERNAME || !SHARED_PASSWORD) {
       return interaction.editReply({
-        embeds: [errorEmbed('No accounts available right now. Contact an admin.')]
+        embeds: [errorEmbed('No credentials configured. Contact an admin.')]
       });
     }
 
-    db.markClaimed(userId, `${user.username}:${user.password}`);
+    db.markClaimed(userId, `${SHARED_USERNAME}:${SHARED_PASSWORD}`);
 
     const embed = new EmbedBuilder()
       .setTitle('✅ Your Login Credentials')
       .setColor(0x5865F2)
       .addFields(
-        { name: '👤 Username', value: `\`${user.username}\`` },
-        { name: '🔒 Password', value: `\`${user.password}\`` }
+        { name: '👤 Username', value: `\`${SHARED_USERNAME}\`` },
+        { name: '🔒 Password', value: `\`${SHARED_PASSWORD}\`` }
       )
       .setFooter({ text: 'Do not share these with anyone.' })
       .setTimestamp();
@@ -55,6 +56,13 @@ client.on('interactionCreate', async (interaction) => {
 
   // /panel command — posts button panel
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
+    if (!interaction.member.permissions.has('Administrator')) {
+      return interaction.reply({
+        content: '❌ Only admins can post the panel.',
+        ephemeral: true
+      });
+    }
+
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('btn_getuser')
@@ -86,21 +94,23 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    const user = await KeyAuth.fetchUnusedUser();
-    if (!user) {
+    const SHARED_USERNAME = process.env.SHARED_USERNAME;
+    const SHARED_PASSWORD = process.env.SHARED_PASSWORD;
+
+    if (!SHARED_USERNAME || !SHARED_PASSWORD) {
       return interaction.editReply({
-        embeds: [errorEmbed('No accounts available. Contact an admin.')]
+        embeds: [errorEmbed('No credentials configured. Contact an admin.')]
       });
     }
 
-    db.markClaimed(userId, `${user.username}:${user.password}`);
+    db.markClaimed(userId, `${SHARED_USERNAME}:${SHARED_PASSWORD}`);
 
     const embed = new EmbedBuilder()
       .setTitle('✅ Your Login Credentials')
       .setColor(0x57F287)
       .addFields(
-        { name: '👤 Username', value: `\`${user.username}\`` },
-        { name: '🔒 Password', value: `\`${user.password}\`` }
+        { name: '👤 Username', value: `\`${SHARED_USERNAME}\`` },
+        { name: '🔒 Password', value: `\`${SHARED_PASSWORD}\`` }
       )
       .setFooter({ text: 'Keep these private. Do not share.' })
       .setTimestamp();
@@ -138,8 +148,10 @@ client.on('interactionCreate', async (interaction) => {
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'count') {
-      const count = await KeyAuth.getUnusedUserCount();
-      interaction.reply({ content: `👤 Available accounts: **${count}**`, ephemeral: true });
+      const SHARED_USERNAME = process.env.SHARED_USERNAME;
+      const SHARED_PASSWORD = process.env.SHARED_PASSWORD;
+      const configured = SHARED_USERNAME && SHARED_PASSWORD ? '✅ Configured' : '❌ Not Set';
+      interaction.reply({ content: `🔑 Shared Credentials: **${configured}**\n👤 Username: **${SHARED_USERNAME || 'Not set'}**`, ephemeral: true });
     }
 
     if (sub === 'reset') {
