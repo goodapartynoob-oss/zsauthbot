@@ -1,50 +1,66 @@
-const fs = require('fs');
-const path = require('path');
+const axios = require('axios');
+require('dotenv').config();
 
-// FREE VERSION — reads username:password pairs from data/users.txt
-// Format: one per line → username:password
-// Example:
-//   user1:pass1
-//   user2:pass2
+// KeyAuth Application Credentials from your dashboard
+const APP_NAME    = process.env.KEYAUTH_APP_NAME;     // e.g. ZSCHEAT
+const OWNER_ID    = process.env.KEYAUTH_OWNER_ID;     // Account Owner ID
+const APP_SECRET  = process.env.KEYAUTH_APP_SECRET;   // Application Secret
+const APP_VER     = process.env.KEYAUTH_APP_VERSION || '1.0';
 
-const USERS_FILE = path.join(__dirname, 'data', 'users.txt');
-const USED_FILE  = path.join(__dirname, 'data', 'used_users.txt');
+const SELLER_URL  = 'https://keyauth.win/api/seller/';
 
-if (!fs.existsSync(path.join(__dirname, 'data'))) {
-  fs.mkdirSync(path.join(__dirname, 'data'), { recursive: true });
-}
-if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '');
-if (!fs.existsSync(USED_FILE))  fs.writeFileSync(USED_FILE, '');
+/**
+ * Fetch all license keys from KeyAuth using Seller API
+ * Returns array of key objects: { key, uses, maxuses, expiry, ... }
+ */
+async function fetchAllKeys() {
+  const res = await axios.get(SELLER_URL, {
+    params: {
+      sellerkey: APP_SECRET,  // Application Secret acts as seller key
+      type: 'fetchallkeys',
+    }
+  });
 
-function getAllUsers() {
-  return fs.readFileSync(USERS_FILE, 'utf8')
-    .split('\n').map(l => l.trim()).filter(l => l.includes(':'));
-}
+  if (!res.data.success) {
+    throw new Error(`KeyAuth error: ${res.data.message}`);
+  }
 
-function getUsedUsers() {
-  return fs.readFileSync(USED_FILE, 'utf8')
-    .split('\n').map(l => l.trim()).filter(l => l.length > 0);
-}
-
-// Returns { username, password } or null if none left
-async function fetchUnusedUser() {
-  const allUsers  = getAllUsers();
-  const usedUsers = getUsedUsers();
-  const available = allUsers.filter(u => !usedUsers.includes(u));
-  if (available.length === 0) return null;
-
-  const entry = available[0];
-  fs.appendFileSync(USED_FILE, entry + '\n');
-
-  const [username, ...rest] = entry.split(':');
-  const password = rest.join(':'); // handle passwords that contain ':'
-  return { username, password };
+  return res.data.keys; // array of key objects
 }
 
-async function getUnusedUserCount() {
-  const allUsers  = getAllUsers();
-  const usedUsers = getUsedUsers();
-  return allUsers.filter(u => !usedUsers.includes(u)).length;
+/**
+ * Returns a key that still has remaining uses.
+ * Skips keys where uses >= maxuses.
+ * Returns key string or null if none available.
+ */
+async function getAvailableKey() {
+  const keys = await fetchAllKeys();
+
+  for (const k of keys) {
+    const uses    = parseInt(k.uses)    || 0;
+    const maxuses = parseInt(k.maxuses) || 0;
+
+    // maxuses = 0 means unlimited — always available
+    // otherwise only give if uses remaining
+    if (maxuses === 0 || uses < maxuses) {
+      return k.key;
+    }
+  }
+
+  return null; // all keys exhausted
 }
 
-module.exports = { fetchUnusedUser, getUnusedUserCount };
+/**
+ * Returns count of keys that still have remaining uses.
+ */
+async function getAvailableKeyCount() {
+  const keys = await fetchAllKeys();
+
+  return keys.filter(k => {
+    const uses    = parseInt(k.uses)    || 0;
+    const maxuses = parseInt(k.maxuses) || 0;
+    return maxuses === 0 || uses < maxuses;
+  }).length;
+}
+
+module.exports = { getAvailableKey, getAvailableKeyCount };
