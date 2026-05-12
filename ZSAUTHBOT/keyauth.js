@@ -1,60 +1,62 @@
 const axios = require('axios');
 require('dotenv').config();
 
-// KeyAuth Application Credentials from your dashboard
-const APP_NAME    = process.env.KEYAUTH_APP_NAME;     // e.g. ZSCHEAT
-const OWNER_ID    = process.env.KEYAUTH_OWNER_ID;     // Account Owner ID
-const APP_SECRET  = process.env.KEYAUTH_APP_SECRET;   // Application Secret
-const APP_VER     = process.env.KEYAUTH_APP_VERSION || '1.0';
-
-const SELLER_URL  = 'https://keyauth.win/api/seller/';
+const OWNER_ID   = process.env.KEYAUTH_OWNER_ID;    // eq1AWn1yMY
+const APP_SECRET = process.env.KEYAUTH_APP_SECRET;  // your secret key
+const APP_NAME   = process.env.KEYAUTH_APP_NAME;    // ZSCHEAT
 
 /**
- * Fetch all license keys from KeyAuth using Seller API
- * Returns array of key objects: { key, uses, maxuses, expiry, ... }
+ * Fetch all license keys from KeyAuth Seller API
  */
 async function fetchAllKeys() {
-  const res = await axios.get(SELLER_URL, {
-    params: {
-      sellerkey: APP_SECRET,  // Application Secret acts as seller key
-      type: 'fetchallkeys',
+  const url = `https://keyauth.win/api/seller/?sellerkey=${APP_SECRET}&type=fetchallkeys`;
+
+  console.log('🔍 Fetching keys from KeyAuth...');
+
+  const res = await axios.get(url, {
+    timeout: 10000,
+    headers: {
+      'User-Agent': 'Mozilla/5.0'
     }
   });
+
+  console.log('KeyAuth response:', JSON.stringify(res.data));
 
   if (!res.data.success) {
     throw new Error(`KeyAuth error: ${res.data.message}`);
   }
 
-  return res.data.keys; // array of key objects
+  return res.data.keys || [];
 }
 
 /**
  * Returns a key that still has remaining uses.
- * Skips keys where uses >= maxuses.
- * Returns key string or null if none available.
  */
 async function getAvailableKey() {
   const keys = await fetchAllKeys();
+
+  if (!keys || keys.length === 0) return null;
 
   for (const k of keys) {
     const uses    = parseInt(k.uses)    || 0;
     const maxuses = parseInt(k.maxuses) || 0;
 
-    // maxuses = 0 means unlimited — always available
-    // otherwise only give if uses remaining
+    // maxuses 0 = unlimited, otherwise check remaining uses
     if (maxuses === 0 || uses < maxuses) {
       return k.key;
     }
   }
 
-  return null; // all keys exhausted
+  return null;
 }
 
 /**
- * Returns count of keys that still have remaining uses.
+ * Returns count of keys with remaining uses.
  */
 async function getAvailableKeyCount() {
   const keys = await fetchAllKeys();
+
+  if (!keys || keys.length === 0) return 0;
 
   return keys.filter(k => {
     const uses    = parseInt(k.uses)    || 0;
