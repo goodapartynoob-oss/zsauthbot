@@ -1,2 +1,1 @@
-USER - dgsdfagdggda254tf
-PASS - dgsdfagdggda254tf
+userdgsdfagdggda254tf:passdgsdfagdggda254tf
