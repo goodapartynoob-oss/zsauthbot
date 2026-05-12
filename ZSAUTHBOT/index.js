@@ -1,5 +1,5 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, SlashCommandBuilder } = require('discord.js');
-const { getAvailableKey, getAvailableKeyCount } = require('./keyauth');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const KeyAuth = require('./keyauth');
 const db = require('./db');
 require('dotenv').config();
 
@@ -7,105 +7,58 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
-// ─── Auto Register Commands on Startup ───────────────────────────────────────
-async function registerCommands() {
-  const commands = [
-    new SlashCommandBuilder()
-      .setName('getkey')
-      .setDescription('Get your unique license key'),
-
-    new SlashCommandBuilder()
-      .setName('panel')
-      .setDescription('Post the key distribution panel in this channel'),
-
-    new SlashCommandBuilder()
-      .setName('admin')
-      .setDescription('Admin commands')
-      .addSubcommand(sub =>
-        sub.setName('count').setDescription('Show number of available keys'))
-      .addSubcommand(sub =>
-        sub.setName('stats').setDescription('Show total keys claimed'))
-      .addSubcommand(sub =>
-        sub.setName('reset')
-          .setDescription('Reset a user claim')
-          .addUserOption(opt =>
-            opt.setName('user').setDescription('User to reset').setRequired(true)))
-  ].map(cmd => cmd.toJSON());
-
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
-  try {
-    console.log('📋 Registering slash commands...');
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-    console.log('✅ Slash commands registered!');
-  } catch (err) {
-    console.error('❌ Failed to register commands:', err);
-  }
-}
-
-client.once('ready', async () => {
+client.once('clientReady', () => {
   console.log(`✅ Bot online as ${client.user.tag}`);
-  await registerCommands();
 });
 
-// ─── Helper: distribute a key to a Discord user ───────────────────────────────
-async function distributeKey(interaction) {
-  const userId = interaction.user.id;
-
-  if (db.hasClaimed(userId)) {
-    return interaction.editReply({
-      embeds: [errorEmbed('You already claimed a key! Check your DMs.')]
-    });
-  }
-
-  let key;
-  try {
-    key = await getAvailableKey();
-  } catch (err) {
-    console.error('KeyAuth FULL error:', err);
-    return interaction.editReply({
-      embeds: [errorEmbed(`KeyAuth error: ${err.message}`)]
-    });
-  }
-
-  if (!key) {
-    return interaction.editReply({
-      embeds: [errorEmbed('No keys available right now. Contact an admin.')]
-    });
-  }
-
-  db.markClaimed(userId, key);
-
-  const embed = new EmbedBuilder()
-    .setTitle('✅ Your License Key')
-    .setColor(0x5865F2)
-    .addFields({ name: '🔑 Key', value: `\`${key}\`` })
-    .setFooter({ text: 'Do not share this key with anyone.' })
-    .setTimestamp();
-
-  try {
-    await interaction.user.send({ embeds: [embed] });
-    await interaction.editReply({ embeds: [successEmbed('✅ Your key has been sent to your DMs!')] });
-  } catch {
-    await interaction.editReply({ embeds: [embed] });
-  }
-}
-
-// ─── Interactions ─────────────────────────────────────────────────────────────
 client.on('interactionCreate', async (interaction) => {
 
-  // /getkey command
-  if (interaction.isChatInputCommand() && interaction.commandName === 'getkey') {
+  // /getuser command
+  if (interaction.isChatInputCommand() && interaction.commandName === 'getuser') {
+    const userId = interaction.user.id;
+
+    if (db.hasClaimed(userId)) {
+      return interaction.reply({
+        embeds: [errorEmbed('You already claimed your login! Check your DMs.')],
+        ephemeral: true
+      });
+    }
+
     await interaction.deferReply({ ephemeral: true });
-    await distributeKey(interaction);
+
+    const user = await KeyAuth.fetchUnusedUser();
+    if (!user) {
+      return interaction.editReply({
+        embeds: [errorEmbed('No accounts available right now. Contact an admin.')]
+      });
+    }
+
+    db.markClaimed(userId, `${user.username}:${user.password}`);
+
+    const embed = new EmbedBuilder()
+      .setTitle('✅ Your Login Credentials')
+      .setColor(0x5865F2)
+      .addFields(
+        { name: '👤 Username', value: `\`${user.username}\`` },
+        { name: '🔒 Password', value: `\`${user.password}\`` }
+      )
+      .setFooter({ text: 'Do not share these with anyone.' })
+      .setTimestamp();
+
+    try {
+      await interaction.user.send({ embeds: [embed] });
+      await interaction.editReply({ embeds: [successEmbed('✅ Your login has been sent to your DMs!')] });
+    } catch {
+      await interaction.editReply({ embeds: [embed] });
+    }
   }
 
-  // /panel command
+  // /panel command — posts button panel
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('btn_getkey')
-        .setLabel('🔑 Get My Key')
+        .setCustomId('btn_getuser')
+        .setLabel('🔑 Get My Login')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('btn_info')
@@ -114,18 +67,50 @@ client.on('interactionCreate', async (interaction) => {
     );
 
     const embed = new EmbedBuilder()
-      .setTitle('🚀 Key Distribution')
-      .setDescription('Click the button below to receive your unique license key.')
+      .setTitle('🚀 Account Distribution')
+      .setDescription('Click the button below to receive your login credentials.')
       .setColor(0x5865F2)
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed], components: [row] });
   }
 
-  // Button: Get Key
-  if (interaction.isButton() && interaction.customId === 'btn_getkey') {
+  // Button: Get Login
+  if (interaction.isButton() && interaction.customId === 'btn_getuser') {
+    const userId = interaction.user.id;
     await interaction.deferReply({ ephemeral: true });
-    await distributeKey(interaction);
+
+    if (db.hasClaimed(userId)) {
+      return interaction.editReply({
+        embeds: [errorEmbed('You already claimed your login. Check your DMs.')]
+      });
+    }
+
+    const user = await KeyAuth.fetchUnusedUser();
+    if (!user) {
+      return interaction.editReply({
+        embeds: [errorEmbed('No accounts available. Contact an admin.')]
+      });
+    }
+
+    db.markClaimed(userId, `${user.username}:${user.password}`);
+
+    const embed = new EmbedBuilder()
+      .setTitle('✅ Your Login Credentials')
+      .setColor(0x57F287)
+      .addFields(
+        { name: '👤 Username', value: `\`${user.username}\`` },
+        { name: '🔒 Password', value: `\`${user.password}\`` }
+      )
+      .setFooter({ text: 'Keep these private. Do not share.' })
+      .setTimestamp();
+
+    try {
+      await interaction.user.send({ embeds: [embed] });
+      await interaction.editReply({ embeds: [successEmbed('✅ Sent to your DMs!')] });
+    } catch {
+      await interaction.editReply({ embeds: [embed] });
+    }
   }
 
   // Button: Info
@@ -134,10 +119,10 @@ client.on('interactionCreate', async (interaction) => {
       embeds: [new EmbedBuilder()
         .setTitle('ℹ️ How It Works')
         .setDescription(
-          '1. Click **Get My Key**\n' +
-          '2. You will receive a unique license key in your DMs\n' +
-          '3. Use the key to activate your app\n' +
-          '4. Each Discord account can only claim **one key**'
+          '1. Click **Get My Login**\n' +
+          '2. You will receive a username and password in DMs\n' +
+          '3. Use them to log into the app\n' +
+          '4. Each Discord account can only claim once'
         )
         .setColor(0xFEE75C)],
       ephemeral: true
@@ -153,13 +138,8 @@ client.on('interactionCreate', async (interaction) => {
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'count') {
-      let count;
-      try {
-        count = await getAvailableKeyCount();
-      } catch {
-        count = 'Error fetching from KeyAuth';
-      }
-      interaction.reply({ content: `🔑 Keys with remaining uses: **${count}**`, ephemeral: true });
+      const count = await KeyAuth.getUnusedUserCount();
+      interaction.reply({ content: `👤 Available accounts: **${count}**`, ephemeral: true });
     }
 
     if (sub === 'reset') {
@@ -170,7 +150,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (sub === 'stats') {
       const total = db.getTotalClaims();
-      interaction.reply({ content: `📊 Total keys claimed: **${total}**`, ephemeral: true });
+      interaction.reply({ content: `📊 Total accounts claimed: **${total}**`, ephemeral: true });
     }
   }
 });
