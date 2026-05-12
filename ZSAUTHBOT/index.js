@@ -62,9 +62,9 @@ async function distributeKey(interaction) {
   try {
     key = await getAvailableKey();
   } catch (err) {
-    console.error('KeyAuth error:', err.message);
+    console.error('KeyAuth FULL error:', err);
     return interaction.editReply({
-      embeds: [errorEmbed('Could not connect to KeyAuth. Try again later.')]
+      embeds: [errorEmbed(`KeyAuth error: ${err.message}`)]
     });
   }
 
