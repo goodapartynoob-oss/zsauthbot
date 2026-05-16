@@ -11,8 +11,8 @@ const ALLOWED_CHANNEL_ID = '1505114854866948107';
 // ============================================================
 //  WEBHOOK — paste your webhook URL below
 // ============================================================
-const WEBHOOK_URL = 'ADD_WEBHOOK_HERE';
-const webhook = WEBHOOK_URL !== 'ADD_WEBHOOK_HERE' ? new WebhookClient({ url: WEBHOOK_URL }) : null;
+const WEBHOOK_URL = 'https://discordapp.com/api/webhooks/1505115627545690133/UFnt2ERdbN0A54iC8dHQ88hrtaaqUUxAoOWsfvkzwOIAEi2B2IFXPUnW8OyCPyrK0gWT';
+const webhook = WEBHOOK_URL !== 'https://discordapp.com/api/webhooks/1505115627545690133/UFnt2ERdbN0A54iC8dHQ88hrtaaqUUxAoOWsfvkzwOIAEi2B2IFXPUnW8OyCPyrK0gWT' ? new WebhookClient({ url: WEBHOOK_URL }) : null;
 
 // ============================================================
 //  DISCORD CLIENT
