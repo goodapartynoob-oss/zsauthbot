@@ -5,14 +5,13 @@ require('dotenv').config();
 // ============================================================
 //  CONFIGURATION
 // ============================================================
-const OWNER_ID          = '1018124017581953074';
-const ALLOWED_CHANNEL_ID = '1505114854866948107';
+const OWNER_ID = '1018124017581953074';
 
 // ============================================================
 //  WEBHOOK — paste your webhook URL below
 // ============================================================
-const WEBHOOK_URL = 'ADD_WEBHOOK_HERE';
-const webhook = WEBHOOK_URL !== 'ADD_WEBHOOK_HERE' ? new WebhookClient({ url: WEBHOOK_URL }) : null;
+const WEBHOOK_URL = 'https://discordapp.com/api/webhooks/1505115627545690133/UFnt2ERdbN0A54iC8dHQ88hrtaaqUUxAoOWsfvkzwOIAEi2B2IFXPUnW8OyCPyrK0gWT';
+const webhook = WEBHOOK_URL !== 'https://discordapp.com/api/webhooks/1505115627545690133/UFnt2ERdbN0A54iC8dHQ88hrtaaqUUxAoOWsfvkzwOIAEi2B2IFXPUnW8OyCPyrK0gWT' ? new WebhookClient({ url: WEBHOOK_URL }) : null;
 
 // ============================================================
 //  DISCORD CLIENT
@@ -54,13 +53,6 @@ client.on('interactionCreate', async (interaction) => {
   // ── /getuser ───────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === 'getuser') {
     const userId = interaction.user.id;
-
-    if (interaction.channelId !== ALLOWED_CHANNEL_ID) {
-      return interaction.reply({
-        embeds: [errorEmbed(`❌ Use this command in <#${ALLOWED_CHANNEL_ID}> only!`)],
-        ephemeral: true
-      });
-    }
 
     if (db.hasClaimed(userId)) {
       return interaction.reply({
@@ -104,12 +96,21 @@ client.on('interactionCreate', async (interaction) => {
   // ── /panel ─────────────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
     if (!isOwner(interaction.user.id) && !interaction.member.permissions.has('Administrator')) {
-      return interaction.reply({ content: '❌ Only the owner or admins can post the panel.', ephemeral: true });
+      return interaction.reply({
+        content: '❌ Only the owner or admins can post the panel.',
+        ephemeral: true
+      });
     }
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('btn_getuser').setLabel('🔑 Get My Login').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('btn_info').setLabel('ℹ️ Info').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder()
+        .setCustomId('btn_getuser')
+        .setLabel('🔑 Get My Login')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('btn_info')
+        .setLabel('ℹ️ Info')
+        .setStyle(ButtonStyle.Secondary)
     );
 
     const embed = new EmbedBuilder()
@@ -151,7 +152,7 @@ client.on('interactionCreate', async (interaction) => {
     process.env.SHARED_PASSWORD = '';
 
     await interaction.reply({
-      embeds: [successEmbed('✅ Credentials have been removed. No one can claim until new ones are added.')],
+      embeds: [successEmbed('✅ Credentials removed. No one can claim until new ones are added.')],
       ephemeral: true
     });
 
@@ -196,12 +197,6 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton() && interaction.customId === 'btn_getuser') {
     const userId = interaction.user.id;
     await interaction.deferReply({ ephemeral: true });
-
-    if (interaction.channelId !== ALLOWED_CHANNEL_ID) {
-      return interaction.editReply({
-        embeds: [errorEmbed(`❌ You can only claim your login in <#${ALLOWED_CHANNEL_ID}>!`)]
-      });
-    }
 
     if (db.hasClaimed(userId)) {
       return interaction.editReply({
@@ -266,7 +261,10 @@ client.on('interactionCreate', async (interaction) => {
     if (sub === 'count') {
       const SHARED_USERNAME = process.env.SHARED_USERNAME;
       const configured = SHARED_USERNAME ? '✅ Configured' : '❌ Not Set';
-      interaction.reply({ content: `🔑 Shared Credentials: **${configured}**\n👤 Username: **${SHARED_USERNAME || 'Not set'}**`, ephemeral: true });
+      interaction.reply({
+        content: `🔑 Shared Credentials: **${configured}**\n👤 Username: **${SHARED_USERNAME || 'Not set'}**`,
+        ephemeral: true
+      });
     }
 
     if (sub === 'reset') {
